@@ -2,8 +2,8 @@ import { getStore } from '@netlify/blobs'
 
 export default async (req) => {
   const url = new URL(req.url)
-  const key = url.searchParams.get('key') || req.headers.get('x-dash-key') || ''
-  const expected = process.env.DASHBOARD_PASSWORD || ''
+  const key = (url.searchParams.get('key') || req.headers.get('x-dash-key') || '').trim()
+  const expected = (process.env.DASHBOARD_PASSWORD || '').trim()
 
   // Safe diagnostic: reports whether the password is configured (never reveals it)
   if (key === '__diag__') {
