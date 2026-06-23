@@ -52,9 +52,12 @@
       <div id="gate" class="gate">
         <h1>Visitor Dashboard</h1>
         <p class="sub">Enter password to view.</p>
-        <input id="pw" type="password" placeholder="Password" autocomplete="current-password" />
+        <input id="pw" type="password" placeholder="Password" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
         <button id="enter">Unlock</button>
         <div id="err" class="err"></div>
+        <p class="sub" style="margin-top: 14px; font-size: 0.8rem">
+          Tip: type it manually (avoid browser autofill).
+        </p>
       </div>
 
       <!-- Dashboard -->
