@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import Navbar from './components/Navbar'
 import Hero from './components/Hero'
 import About from './components/About'
@@ -14,6 +15,29 @@ import Preloader from './components/Preloader'
 import MouseGlow from './components/MouseGlow'
 
 export default function App() {
+  // Log the visit to our private analytics (works only on the deployed site)
+  useEffect(() => {
+    try {
+      let id = localStorage.getItem('vid')
+      if (!id) {
+        id = crypto.randomUUID()
+        localStorage.setItem('vid', id)
+      }
+      fetch('/.netlify/functions/track', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          visitorId: id,
+          referrer: document.referrer,
+          path: window.location.pathname,
+        }),
+        keepalive: true,
+      }).catch(() => {})
+    } catch {
+      /* ignore */
+    }
+  }, [])
+
   return (
     <div className="min-h-screen">
       <Preloader />
