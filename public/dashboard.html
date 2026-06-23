@@ -57,16 +57,31 @@
       .ghost { width: auto; padding: 9px 16px; background: transparent; color: #cfcfcf; border: 1px solid rgba(255,255,255,0.15); }
       .ghost:hover { background: rgba(255,255,255,0.06); color: #fff; }
       .filters { display: flex; gap: 10px; flex-wrap: wrap; margin: 0 0 16px; }
-      .filters input, .filters select {
-        width: auto; margin: 0; padding: 9px 14px; border-radius: 10px; font-size: 0.82rem;
+      .filters input {
+        margin: 0; padding: 9px 14px; border-radius: 10px; font-size: 0.82rem;
         background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.12); color: #fff;
-        outline: none; accent-color: #fff;
+        outline: none; min-width: 220px; flex: 1;
       }
-      .filters input { min-width: 220px; flex: 1; }
-      .filters select { cursor: pointer; }
-      .filters input:focus, .filters select:focus { border-color: rgba(255,255,255,0.4); box-shadow: none; }
-      .filters option { background: #0a0a0a; color: #fff; }
-      .filters option:checked, .filters option:hover { background: #1a1a1a; color: #fff; }
+      .filters input:focus { border-color: rgba(255,255,255,0.4); box-shadow: none; }
+      /* Custom dropdowns (native selects ignore CSS colors in their popup) */
+      .dd { position: relative; }
+      .dd-btn {
+        width: auto; margin: 0; padding: 9px 34px 9px 14px; border-radius: 10px; font-size: 0.82rem;
+        background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.12); color: #fff;
+        text-align: left; cursor: pointer; position: relative; min-width: 140px;
+      }
+      .dd-btn:hover { background: rgba(255,255,255,0.06); }
+      .dd-btn::after { content: '▾'; position: absolute; right: 13px; top: 50%; transform: translateY(-50%); color: #8a8a8a; font-size: 0.7rem; }
+      .dd.open .dd-btn { border-color: rgba(255,255,255,0.4); }
+      .dd-menu {
+        display: none; position: absolute; top: calc(100% + 6px); left: 0; min-width: 100%;
+        background: #0c0c0c; border: 1px solid rgba(255,255,255,0.14); border-radius: 12px; padding: 6px;
+        z-index: 30; max-height: 260px; overflow-y: auto; box-shadow: 0 12px 32px rgba(0,0,0,0.55);
+      }
+      .dd.open .dd-menu { display: block; }
+      .dd-item { padding: 8px 12px; border-radius: 8px; font-size: 0.82rem; color: #cfcfcf; cursor: pointer; white-space: nowrap; }
+      .dd-item:hover { background: rgba(255,255,255,0.08); color: #fff; }
+      .dd-item.sel { background: rgba(255,255,255,0.14); color: #fff; }
       tbody tr { cursor: pointer; }
       .empty { text-align: center; color: #777; padding: 32px; }
       /* Detail modal */
@@ -121,13 +136,9 @@
         <div class="cards" id="cards"></div>
         <div class="filters">
           <input id="search" type="text" placeholder="Search location, browser, referrer, visitor…" />
-          <select id="fCountry"><option value="">All countries</option></select>
-          <select id="fDevice"><option value="">All devices</option></select>
-          <select id="fVisitor">
-            <option value="">All visitors</option>
-            <option value="new">New only</option>
-            <option value="repeat">Returning only</option>
-          </select>
+          <div class="dd" id="ddCountry"><button type="button" class="dd-btn">All countries</button><div class="dd-menu"></div></div>
+          <div class="dd" id="ddDevice"><button type="button" class="dd-btn">All devices</button><div class="dd-menu"></div></div>
+          <div class="dd" id="ddVisitor"><button type="button" class="dd-btn">All visitors</button><div class="dd-menu"></div></div>
         </div>
         <div class="tablewrap scroll">
           <table>
@@ -161,6 +172,41 @@
     <script>
       const $ = (id) => document.getElementById(id)
 
+      const FILTERS = { country: '', device: '', visitor: '' }
+
+      function buildDropdown(elId, items, key, defaultLabel) {
+        const dd = $(elId)
+        const btn = dd.querySelector('.dd-btn')
+        const menu = dd.querySelector('.dd-menu')
+        const opts = [{ value: '', label: defaultLabel }, ...items]
+        // If the previously selected value no longer exists, reset to default.
+        if (!opts.some((o) => o.value === FILTERS[key])) FILTERS[key] = ''
+        menu.innerHTML = opts
+          .map((o) => `<div class="dd-item${o.value === FILTERS[key] ? ' sel' : ''}" data-v="${esc(o.value)}">${esc(o.label)}</div>`)
+          .join('')
+        const cur = opts.find((o) => o.value === FILTERS[key]) || opts[0]
+        btn.textContent = cur.label
+        menu.querySelectorAll('.dd-item').forEach((it) => {
+          it.onclick = () => {
+            FILTERS[key] = it.dataset.v
+            btn.textContent = it.textContent
+            menu.querySelectorAll('.dd-item').forEach((x) => x.classList.remove('sel'))
+            it.classList.add('sel')
+            dd.classList.remove('open')
+            applyFilters()
+          }
+        })
+        btn.onclick = (e) => {
+          e.stopPropagation()
+          const wasOpen = dd.classList.contains('open')
+          document.querySelectorAll('.dd.open').forEach((x) => x.classList.remove('open'))
+          if (!wasOpen) dd.classList.add('open')
+        }
+      }
+      document.addEventListener('click', () =>
+        document.querySelectorAll('.dd.open').forEach((x) => x.classList.remove('open')),
+      )
+
       function flag(code) {
         if (!code || code.length !== 2) return ''
         return String.fromCodePoint(...[...code.toUpperCase()].map((c) => 127397 + c.charCodeAt(0)))
@@ -183,11 +229,11 @@
       let ALL = [] // every visit, newest-first
       let COUNTS = {} // visitorId -> total visits
 
-      async function load(pw) {
+      async function load(pw, silent) {
         $('err').textContent = ''
         const btn = $('refresh')
         const wasDash = $('dash').style.display === 'block'
-        if (wasDash) {
+        if (wasDash && !silent) {
           btn.disabled = true
           btn.textContent = '↻ Refreshing…'
         }
@@ -206,14 +252,27 @@
           sessionStorage.setItem('dpw', pw)
           $('gate').style.display = 'none'
           $('dash').style.display = 'block'
+          startAuto()
           return true
         } catch (e) {
-          $('err').textContent = 'Network error. Is this the live site?'
+          if (!silent) $('err').textContent = 'Network error. Is this the live site?'
           return false
         } finally {
           btn.disabled = false
           btn.textContent = '↻ Refresh'
         }
+      }
+
+      // Auto-refresh every 60s while viewing the dashboard (paused if a modal is open).
+      let AUTO = null
+      function startAuto() {
+        if (AUTO) return
+        AUTO = setInterval(() => {
+          const pw = sessionStorage.getItem('dpw')
+          if (pw && $('dash').style.display === 'block' && !$('modalBg').classList.contains('open')) {
+            load(pw, true)
+          }
+        }, 60000)
       }
 
       function ingest(visits) {
@@ -236,16 +295,18 @@
 
         // Populate filter dropdowns
         const countries = [...new Set(ALL.map((v) => v.country).filter(Boolean))].sort()
-        $('fCountry').innerHTML =
-          '<option value="">All countries</option>' +
-          countries.map((c) => `<option value="${esc(c)}">${esc(c)}</option>`).join('')
+        buildDropdown('ddCountry', countries.map((c) => ({ value: c, label: c })), 'country', 'All countries')
         const devices = [...new Set(ALL.map((v) => v.device).filter(Boolean))].sort()
-        $('fDevice').innerHTML =
-          '<option value="">All devices</option>' +
-          devices.map((d) => `<option value="${esc(d)}">${esc(d)}</option>`).join('')
+        buildDropdown('ddDevice', devices.map((d) => ({ value: d, label: d })), 'device', 'All devices')
+        buildDropdown(
+          'ddVisitor',
+          [{ value: 'new', label: 'New only' }, { value: 'repeat', label: 'Returning only' }],
+          'visitor',
+          'All visitors',
+        )
 
         applyFilters()
-        $('updated').textContent = 'Last updated ' + new Date().toLocaleTimeString()
+        $('updated').textContent = 'Last updated ' + new Date().toLocaleTimeString() + ' · auto-refreshes every 60s'
       }
 
       function esc(s) {
@@ -262,9 +323,9 @@
 
       function applyFilters() {
         const q = $('search').value.trim().toLowerCase()
-        const country = $('fCountry').value
-        const device = $('fDevice').value
-        const vis = $('fVisitor').value
+        const country = FILTERS.country
+        const device = FILTERS.device
+        const vis = FILTERS.visitor
 
         const filtered = ALL.filter((v) => {
           if (country && v.country !== country) return false
@@ -335,9 +396,7 @@
         if (e.key === 'Enter') load($('pw').value)
       })
       $('refresh').onclick = () => load(sessionStorage.getItem('dpw') || '')
-      ;['search', 'fCountry', 'fDevice', 'fVisitor'].forEach((id) => {
-        $(id).addEventListener('input', applyFilters)
-      })
+      $('search').addEventListener('input', applyFilters)
       $('rows').addEventListener('click', (e) => {
         const tr = e.target.closest('tr[data-i]')
         if (!tr) return
