@@ -26,6 +26,14 @@
         background: #fff; color: #000; font-weight: 600; font-size: 0.9rem; cursor: pointer;
       }
       button:hover { background: #d4d4d8; }
+      .pwrow { position: relative; margin-top: 18px; }
+      .pwrow input { margin-top: 0; padding-right: 66px; }
+      .eye {
+        position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+        width: auto; margin: 0; padding: 7px 12px; background: transparent;
+        color: #9a9a9a; font-size: 0.78rem; font-weight: 500; border-radius: 8px;
+      }
+      .eye:hover { color: #fff; background: rgba(255,255,255,0.08); }
       .err { color: #f87171; margin-top: 12px; font-size: 0.85rem; min-height: 1em; }
       .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin: 24px 0 28px; }
       .card { border: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.02); border-radius: 16px; padding: 18px; }
@@ -52,11 +60,14 @@
       <div id="gate" class="gate">
         <h1>Visitor Dashboard</h1>
         <p class="sub">Enter password to view.</p>
-        <input id="pw" type="password" placeholder="Password" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
+        <div class="pwrow">
+          <input id="pw" type="password" placeholder="Password" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
+          <button id="toggle" type="button" class="eye" aria-label="Show password">show</button>
+        </div>
         <button id="enter">Unlock</button>
         <div id="err" class="err"></div>
         <p class="sub" style="margin-top: 14px; font-size: 0.8rem">
-          Tip: type it manually (avoid browser autofill).
+          Tip: click <strong>show</strong> to check what you typed.
         </p>
       </div>
 
@@ -177,6 +188,15 @@
       $('enter').onclick = () => load($('pw').value)
       $('pw').onkeydown = (e) => e.key === 'Enter' && load($('pw').value)
       $('refresh').onclick = () => load(sessionStorage.getItem('dpw') || '')
+
+      // Show / hide password
+      $('toggle').onclick = () => {
+        const input = $('pw')
+        const show = input.type === 'password'
+        input.type = show ? 'text' : 'password'
+        $('toggle').textContent = show ? 'hide' : 'show'
+        input.focus()
+      }
 
       // Auto-load if password remembered this session
       const saved = sessionStorage.getItem('dpw')
