@@ -51,7 +51,41 @@
       .topbar { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; }
       .refresh { width: auto; padding: 9px 18px; background: transparent; color: #fff; border: 1px solid rgba(255,255,255,0.15); }
       .refresh:hover { background: rgba(255,255,255,0.06); }
+      .refresh:disabled { opacity: 0.5; cursor: default; }
       .scroll { overflow-x: auto; }
+      .actions { display: flex; gap: 8px; }
+      .ghost { width: auto; padding: 9px 16px; background: transparent; color: #cfcfcf; border: 1px solid rgba(255,255,255,0.15); }
+      .ghost:hover { background: rgba(255,255,255,0.06); color: #fff; }
+      .ghost.danger:hover { background: rgba(248,113,113,0.12); color: #f87171; border-color: rgba(248,113,113,0.4); }
+      .filters { display: flex; gap: 10px; flex-wrap: wrap; margin: 0 0 16px; }
+      .filters input, .filters select {
+        width: auto; margin: 0; padding: 9px 14px; border-radius: 10px; font-size: 0.82rem;
+        background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.12); color: #fff;
+      }
+      .filters input { min-width: 220px; flex: 1; }
+      .filters select { cursor: pointer; }
+      .filters input:focus, .filters select:focus { border-color: rgba(255,255,255,0.4); }
+      .filters option { background: #0a0a0a; color: #fff; }
+      tbody tr { cursor: pointer; }
+      .empty { text-align: center; color: #777; padding: 32px; }
+      /* Detail modal */
+      .modal-bg {
+        position: fixed; inset: 0; background: rgba(0,0,0,0.7); backdrop-filter: blur(4px);
+        display: none; align-items: center; justify-content: center; padding: 20px; z-index: 50;
+      }
+      .modal-bg.open { display: flex; }
+      .modal {
+        width: 100%; max-width: 460px; background: #0c0c0c; border: 1px solid rgba(255,255,255,0.12);
+        border-radius: 18px; padding: 24px; max-height: 85vh; overflow-y: auto;
+      }
+      .modal h2 { font-family: 'Space Grotesk', sans-serif; font-size: 1.15rem; color: #fff; }
+      .modal .close { width: auto; margin: 0; padding: 6px 12px; background: transparent; color: #9a9a9a; border: 1px solid rgba(255,255,255,0.15); font-size: 0.78rem; }
+      .modal .close:hover { color: #fff; background: rgba(255,255,255,0.06); }
+      .mhead { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 16px; }
+      .drow { display: flex; justify-content: space-between; gap: 16px; padding: 11px 0; border-bottom: 1px solid rgba(255,255,255,0.06); font-size: 0.86rem; }
+      .drow:last-child { border-bottom: none; }
+      .drow .k { color: #8a8a8a; }
+      .drow .v { color: #fff; text-align: right; word-break: break-word; }
     </style>
   </head>
   <body>
@@ -78,9 +112,22 @@
             <h1>Visitor Dashboard</h1>
             <p class="sub" id="updated"></p>
           </div>
-          <button class="refresh" id="refresh">↻ Refresh</button>
+          <div class="actions">
+            <button class="ghost danger" id="clear">Clear data</button>
+            <button class="refresh" id="refresh">↻ Refresh</button>
+          </div>
         </div>
         <div class="cards" id="cards"></div>
+        <div class="filters">
+          <input id="search" type="text" placeholder="Search location, browser, referrer, visitor…" />
+          <select id="fCountry"><option value="">All countries</option></select>
+          <select id="fDevice"><option value="">All devices</option></select>
+          <select id="fVisitor">
+            <option value="">All visitors</option>
+            <option value="new">New only</option>
+            <option value="repeat">Returning only</option>
+          </select>
+        </div>
         <div class="tablewrap scroll">
           <table>
             <thead>
@@ -96,6 +143,17 @@
             <tbody id="rows"></tbody>
           </table>
         </div>
+      </div>
+    </div>
+
+    <!-- Detail modal -->
+    <div class="modal-bg" id="modalBg">
+      <div class="modal">
+        <div class="mhead">
+          <h2>Visit details</h2>
+          <button class="close" id="modalClose">close</button>
+        </div>
+        <div id="modalBody"></div>
       </div>
     </div>
 
@@ -121,10 +179,19 @@
         })
       }
 
+      let ALL = [] // every visit, newest-first
+      let COUNTS = {} // visitorId -> total visits
+
       async function load(pw) {
         $('err').textContent = ''
+        const btn = $('refresh')
+        const wasDash = $('dash').style.display === 'block'
+        if (wasDash) {
+          btn.disabled = true
+          btn.textContent = '↻ Refreshing…'
+        }
         try {
-          const res = await fetch('/.netlify/functions/visits?key=' + encodeURIComponent(pw))
+          const res = await fetch('/.netlify/functions/visits?key=' + encodeURIComponent(pw), { cache: 'no-store' })
           if (res.status === 401) {
             $('err').textContent = 'Wrong password.'
             return false
@@ -134,7 +201,7 @@
             return false
           }
           const { visits } = await res.json()
-          render(visits || [])
+          ingest(visits || [])
           sessionStorage.setItem('dpw', pw)
           $('gate').style.display = 'none'
           $('dash').style.display = 'block'
@@ -142,15 +209,20 @@
         } catch (e) {
           $('err').textContent = 'Network error. Is this the live site?'
           return false
+        } finally {
+          btn.disabled = false
+          btn.textContent = '↻ Refresh'
         }
       }
 
-      function render(visits) {
-        const counts = {}
-        visits.forEach((v) => (counts[v.visitorId] = (counts[v.visitorId] || 0) + 1))
-        const unique = Object.keys(counts).length
-        const returning = Object.values(counts).filter((c) => c > 1).length
+      function ingest(visits) {
+        COUNTS = {}
+        visits.forEach((v) => (COUNTS[v.visitorId] = (COUNTS[v.visitorId] || 0) + 1))
+        ALL = [...visits].reverse() // newest first
 
+        // Summary cards (always reflect the full dataset)
+        const unique = Object.keys(COUNTS).length
+        const returning = Object.values(COUNTS).filter((c) => c > 1).length
         const cards = [
           ['Total visits', visits.length],
           ['Unique visitors', unique],
@@ -161,35 +233,143 @@
           .map((c) => `<div class="card"><div class="num">${c[1]}</div><div class="lbl">${c[0]}</div></div>`)
           .join('')
 
-        const rows = [...visits].reverse()
-        $('rows').innerHTML = rows
-          .map((v) => {
-            const loc = [v.city, v.country].filter(Boolean).join(', ') || '—'
-            const n = counts[v.visitorId]
-            const visitorPill =
-              n > 1
-                ? `<span class="pill repeat">×${n} repeat</span>`
-                : `<span class="pill">new</span>`
-            const ref = v.referrer ? new URL(v.referrer).hostname.replace('www.', '') : 'Direct'
-            return `<tr>
-              <td>${fmt(v.time)}<br><span class="muted">${timeAgo(v.time)}</span></td>
-              <td>${flag(v.countryCode)} ${loc}${v.region ? `<br><span class="muted">${v.region}</span>` : ''}</td>
-              <td>${v.device || '—'}</td>
-              <td>${v.browser || '—'}<br><span class="muted">${v.os || ''}</span></td>
-              <td>${ref}</td>
-              <td><span class="muted">${(v.visitorId || '').slice(0, 8)}</span><br>${visitorPill}</td>
-            </tr>`
-          })
-          .join('')
+        // Populate filter dropdowns
+        const countries = [...new Set(ALL.map((v) => v.country).filter(Boolean))].sort()
+        $('fCountry').innerHTML =
+          '<option value="">All countries</option>' +
+          countries.map((c) => `<option value="${esc(c)}">${esc(c)}</option>`).join('')
+        const devices = [...new Set(ALL.map((v) => v.device).filter(Boolean))].sort()
+        $('fDevice').innerHTML =
+          '<option value="">All devices</option>' +
+          devices.map((d) => `<option value="${esc(d)}">${esc(d)}</option>`).join('')
 
+        applyFilters()
         $('updated').textContent = 'Last updated ' + new Date().toLocaleTimeString()
       }
 
+      function esc(s) {
+        return String(s).replace(/[&<>"']/g, (m) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]))
+      }
+      function refOf(v) {
+        if (!v.referrer) return 'Direct'
+        try {
+          return new URL(v.referrer).hostname.replace('www.', '')
+        } catch {
+          return v.referrer
+        }
+      }
+
+      function applyFilters() {
+        const q = $('search').value.trim().toLowerCase()
+        const country = $('fCountry').value
+        const device = $('fDevice').value
+        const vis = $('fVisitor').value
+
+        const filtered = ALL.filter((v) => {
+          if (country && v.country !== country) return false
+          if (device && v.device !== device) return false
+          const repeat = (COUNTS[v.visitorId] || 0) > 1
+          if (vis === 'new' && repeat) return false
+          if (vis === 'repeat' && !repeat) return false
+          if (q) {
+            const hay = [v.city, v.region, v.country, v.browser, v.os, v.device, refOf(v), v.visitorId, v.path]
+              .filter(Boolean)
+              .join(' ')
+              .toLowerCase()
+            if (!hay.includes(q)) return false
+          }
+          return true
+        })
+
+        if (!filtered.length) {
+          $('rows').innerHTML = '<tr><td colspan="6" class="empty">No visits match your filters.</td></tr>'
+          return
+        }
+
+        $('rows').innerHTML = filtered
+          .map((v, i) => {
+            const loc = [v.city, v.country].filter(Boolean).join(', ') || '—'
+            const n = COUNTS[v.visitorId]
+            const visitorPill = n > 1 ? `<span class="pill repeat">×${n} repeat</span>` : `<span class="pill">new</span>`
+            return `<tr data-i="${ALL.indexOf(v)}">
+              <td>${fmt(v.time)}<br><span class="muted">${timeAgo(v.time)}</span></td>
+              <td>${flag(v.countryCode)} ${esc(loc)}${v.region ? `<br><span class="muted">${esc(v.region)}</span>` : ''}</td>
+              <td>${esc(v.device || '—')}</td>
+              <td>${esc(v.browser || '—')}<br><span class="muted">${esc(v.os || '')}</span></td>
+              <td>${esc(refOf(v))}</td>
+              <td><span class="muted">${esc((v.visitorId || '').slice(0, 8))}</span><br>${visitorPill}</td>
+            </tr>`
+          })
+          .join('')
+      }
+
+      function openDetail(v) {
+        const n = COUNTS[v.visitorId] || 1
+        const rows = [
+          ['When', fmt(v.time) + ' (' + timeAgo(v.time) + ')'],
+          ['City', v.city || '—'],
+          ['Region', v.region || '—'],
+          ['Country', (flag(v.countryCode) + ' ' + (v.country || '—')).trim()],
+          ['Timezone', v.timezone || '—'],
+          ['Device', v.device || '—'],
+          ['Browser', v.browser || '—'],
+          ['OS', v.os || '—'],
+          ['Came from', refOf(v)],
+          ['Landed on', v.path || '/'],
+          ['Visitor ID', v.visitorId || '—'],
+          ['Visits by this visitor', n + (n > 1 ? ' (returning)' : ' (new)')],
+        ]
+        $('modalBody').innerHTML = rows
+          .map((r) => `<div class="drow"><span class="k">${r[0]}</span><span class="v">${esc(r[1])}</span></div>`)
+          .join('')
+        $('modalBg').classList.add('open')
+      }
+      function closeDetail() {
+        $('modalBg').classList.remove('open')
+      }
+
+      // Event wiring
       $('enter').onclick = () => load($('pw').value)
       $('pw').addEventListener('keydown', (e) => {
         if (e.key === 'Enter') load($('pw').value)
       })
       $('refresh').onclick = () => load(sessionStorage.getItem('dpw') || '')
+      ;['search', 'fCountry', 'fDevice', 'fVisitor'].forEach((id) => {
+        $(id).addEventListener('input', applyFilters)
+      })
+      $('rows').addEventListener('click', (e) => {
+        const tr = e.target.closest('tr[data-i]')
+        if (!tr) return
+        const v = ALL[Number(tr.dataset.i)]
+        if (v) openDetail(v)
+      })
+      $('modalClose').onclick = closeDetail
+      $('modalBg').addEventListener('click', (e) => {
+        if (e.target === $('modalBg')) closeDetail()
+      })
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') closeDetail()
+      })
+      $('clear').onclick = async () => {
+        if (!confirm('Delete ALL stored visit data? This cannot be undone.')) return
+        const pw = sessionStorage.getItem('dpw') || ''
+        const btn = $('clear')
+        btn.disabled = true
+        btn.textContent = 'Clearing…'
+        try {
+          const res = await fetch('/.netlify/functions/visits?key=' + encodeURIComponent(pw) + '&clear=1', { cache: 'no-store' })
+          if (res.ok) {
+            ingest([])
+          } else {
+            alert('Could not clear data.')
+          }
+        } catch {
+          alert('Network error while clearing.')
+        } finally {
+          btn.disabled = false
+          btn.textContent = 'Clear data'
+        }
+      }
 
       // Show / hide password
       $('toggle').onclick = () => {

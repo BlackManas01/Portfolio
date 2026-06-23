@@ -27,6 +27,9 @@ function parseUA(ua = '') {
   return { browser, os, device }
 }
 
+// Automated traffic we never want in the dashboard (crawlers, headless test browsers, monitors).
+const BOT = /bot\b|crawl|spider|slurp|headless|playwright|puppeteer|phantom|lighthouse|chrome-lighthouse|pingdom|uptime|monitor|preview|facebookexternalhit|embedly|netlify|vercel|render|prerender|http-client|curl|wget|python-requests|axios|node-fetch/i
+
 export default async (req, context) => {
   if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 })
 
@@ -38,6 +41,12 @@ export default async (req, context) => {
   }
 
   const ua = req.headers.get('user-agent') || ''
+
+  // Drop automated traffic and the owner's own visits before they ever hit storage.
+  if (!ua || BOT.test(ua) || body.owner === true) {
+    return new Response('skip', { status: 200 })
+  }
+
   const { browser, os, device } = parseUA(ua)
   const geo = context.geo || {}
 

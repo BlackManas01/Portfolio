@@ -20,9 +20,26 @@ export default async (req) => {
     })
   }
 
+  const store = getStore('analytics')
+
+  // Authenticated wipe: clears all stored visits.
+  if (url.searchParams.get('clear') === '1') {
+    try {
+      await store.setJSON('visits', [])
+    } catch {
+      return new Response(JSON.stringify({ error: 'Could not clear' }), {
+        status: 500,
+        headers: { 'content-type': 'application/json' },
+      })
+    }
+    return new Response(JSON.stringify({ visits: [], cleared: true }), {
+      status: 200,
+      headers: { 'content-type': 'application/json', 'cache-control': 'no-store' },
+    })
+  }
+
   let visits = []
   try {
-    const store = getStore('analytics')
     visits = (await store.get('visits', { type: 'json' })) || []
   } catch {
     visits = []

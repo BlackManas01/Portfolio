@@ -18,6 +18,12 @@ export default function App() {
   // Log the visit to our private analytics (works only on the deployed site)
   useEffect(() => {
     try {
+      // Owner opt-out: visiting "?notrack=1" once stops logging your own visits.
+      const params = new URLSearchParams(window.location.search)
+      if (params.get('notrack') === '1') localStorage.setItem('notrack', '1')
+      if (params.get('notrack') === '0') localStorage.removeItem('notrack')
+      const isOwner = localStorage.getItem('notrack') === '1'
+
       let id = localStorage.getItem('vid')
       if (!id) {
         id = crypto.randomUUID()
@@ -30,6 +36,7 @@ export default function App() {
           visitorId: id,
           referrer: document.referrer,
           path: window.location.pathname,
+          owner: isOwner,
         }),
         keepalive: true,
       }).catch(() => {})
