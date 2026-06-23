@@ -5,6 +5,14 @@ export default async (req) => {
   const key = url.searchParams.get('key') || req.headers.get('x-dash-key') || ''
   const expected = process.env.DASHBOARD_PASSWORD || ''
 
+  // Safe diagnostic: reports whether the password is configured (never reveals it)
+  if (key === '__diag__') {
+    return new Response(
+      JSON.stringify({ configured: Boolean(expected), length: expected.length }),
+      { status: 200, headers: { 'content-type': 'application/json' } },
+    )
+  }
+
   if (!expected || key !== expected) {
     return new Response(JSON.stringify({ error: 'Unauthorized' }), {
       status: 401,
