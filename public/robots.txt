@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://sudhanshu-singh-sdet.netlify.app/sitemap.xml
