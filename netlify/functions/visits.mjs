@@ -20,7 +20,7 @@ export default async (req) => {
     })
   }
 
-  const store = getStore('analytics')
+  const store = getStore({ name: 'analytics', consistency: 'strong' })
 
   // Authenticated wipe: clears all stored visits.
   if (url.searchParams.get('clear') === '1') {

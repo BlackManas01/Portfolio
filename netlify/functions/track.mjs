@@ -66,7 +66,7 @@ export default async (req, context) => {
   }
 
   try {
-    const store = getStore('analytics')
+    const store = getStore({ name: 'analytics', consistency: 'strong' })
     const existing = (await store.get('visits', { type: 'json' })) || []
     existing.push(record)
     const trimmed = existing.slice(-1000)
