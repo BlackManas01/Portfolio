@@ -105,6 +105,13 @@
       .drow:last-child { border-bottom: none; }
       .drow .k { color: #8a8a8a; }
       .drow .v { color: #fff; text-align: right; word-break: break-word; }
+      .dsub { margin: 18px 0 8px; color: #8a8a8a; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.1em; }
+      .hlist { border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; overflow: hidden; }
+      .hrow { display: flex; justify-content: space-between; gap: 12px; padding: 10px 12px; border-bottom: 1px solid rgba(255,255,255,0.06); font-size: 0.82rem; }
+      .hrow:last-child { border-bottom: none; }
+      .hrow .ht { color: #fff; }
+      .hrow .hm { color: #8a8a8a; }
+      .hrow .hn { color: #6f6f6f; font-size: 0.72rem; }
     </style>
   </head>
   <body>
@@ -395,9 +402,26 @@
           ['Visitor ID', v.visitorId || '—'],
           ['Visits by this visitor', n + (n > 1 ? ' (returning)' : ' (new)')],
         ]
-        $('modalBody').innerHTML = rows
+        let html = rows
           .map((r) => `<div class="drow"><span class="k">${r[0]}</span><span class="v">${esc(r[1])}</span></div>`)
           .join('')
+
+        // Full visit history for this visitor (newest first), with the current one marked.
+        const history = ALL.filter((x) => x.visitorId === v.visitorId)
+        html += `<div class="dsub">Visit history (${history.length})</div><div class="hlist">`
+        html += history
+          .map((h, i) => {
+            const where = [h.city, h.country].filter(Boolean).join(', ') || refOf(h)
+            const isThis = h.time === v.time
+            return `<div class="hrow">
+              <span class="ht">${fmt(h.time)}${isThis ? ' <span class="hn">(this one)</span>' : ''}<br><span class="hm">${esc(where)} · ${esc(h.path || '/')}</span></span>
+              <span class="hm">${timeAgo(h.time)}</span>
+            </div>`
+          })
+          .join('')
+        html += '</div>'
+
+        $('modalBody').innerHTML = html
         $('modalBg').classList.add('open')
       }
       function closeDetail() {
