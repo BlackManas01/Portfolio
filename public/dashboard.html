@@ -45,8 +45,8 @@
       th { color: #8a8a8a; font-weight: 500; text-transform: uppercase; font-size: 0.7rem; letter-spacing: 0.08em; background: rgba(255,255,255,0.02); }
       tr:last-child td { border-bottom: none; }
       tr:hover td { background: rgba(255,255,255,0.02); }
-      .pill { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 0.72rem; border: 1px solid rgba(255,255,255,0.15); color: #cfcfcf; }
-      .repeat { background: #fff; color: #000; border-color: #fff; font-weight: 600; }
+      .pill { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 0.68rem; border: 1px solid rgba(255,255,255,0.14); color: #8f8f8f; }
+      .repeat { border-color: rgba(255,255,255,0.32); color: #fff; background: rgba(255,255,255,0.06); font-weight: 500; }
       .muted { color: #777; }
       .topbar { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; }
       .refresh { width: auto; padding: 9px 18px; background: transparent; color: #fff; border: 1px solid rgba(255,255,255,0.15); }
@@ -82,6 +82,9 @@
       .dd-item { padding: 8px 12px; border-radius: 8px; font-size: 0.82rem; color: #cfcfcf; cursor: pointer; white-space: nowrap; }
       .dd-item:hover { background: rgba(255,255,255,0.08); color: #fff; }
       .dd-item.sel { background: rgba(255,255,255,0.14); color: #fff; }
+      .ddtoggle { width: auto; margin: 0; padding: 9px 16px; border-radius: 10px; font-size: 0.82rem; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.12); color: #cfcfcf; cursor: pointer; }
+      .ddtoggle:hover { background: rgba(255,255,255,0.06); color: #fff; }
+      .ddtoggle.on { background: rgba(255,255,255,0.12); color: #fff; border-color: rgba(255,255,255,0.32); }
       tbody tr { cursor: pointer; }
       .empty { text-align: center; color: #777; padding: 32px; }
       /* Detail modal */
@@ -139,6 +142,7 @@
           <div class="dd" id="ddCountry"><button type="button" class="dd-btn">All countries</button><div class="dd-menu"></div></div>
           <div class="dd" id="ddDevice"><button type="button" class="dd-btn">All devices</button><div class="dd-menu"></div></div>
           <div class="dd" id="ddVisitor"><button type="button" class="dd-btn">All visitors</button><div class="dd-menu"></div></div>
+          <button type="button" id="groupBtn" class="ddtoggle on">Grouped by visitor</button>
         </div>
         <div class="tablewrap scroll">
           <table>
@@ -272,7 +276,7 @@
           if (pw && $('dash').style.display === 'block' && !$('modalBg').classList.contains('open')) {
             load(pw, true)
           }
-        }, 60000)
+        }, 30000)
       }
 
       function ingest(visits) {
@@ -306,7 +310,7 @@
         )
 
         applyFilters()
-        $('updated').textContent = 'Last updated ' + new Date().toLocaleTimeString() + ' · auto-refreshes every 60s'
+        $('updated').textContent = 'Last updated ' + new Date().toLocaleTimeString() + ' · auto-refreshes every 30s'
       }
 
       function esc(s) {
@@ -343,16 +347,26 @@
           return true
         })
 
-        if (!filtered.length) {
+        let list = filtered
+        if (GROUPED) {
+          const seen = new Set()
+          list = filtered.filter((v) => {
+            if (seen.has(v.visitorId)) return false
+            seen.add(v.visitorId)
+            return true
+          })
+        }
+
+        if (!list.length) {
           $('rows').innerHTML = '<tr><td colspan="6" class="empty">No visits match your filters.</td></tr>'
           return
         }
 
-        $('rows').innerHTML = filtered
-          .map((v, i) => {
+        $('rows').innerHTML = list
+          .map((v) => {
             const loc = [v.city, v.country].filter(Boolean).join(', ') || '—'
             const n = COUNTS[v.visitorId]
-            const visitorPill = n > 1 ? `<span class="pill repeat">×${n} repeat</span>` : `<span class="pill">new</span>`
+            const visitorPill = n > 1 ? `<span class="pill repeat">${n} visits</span>` : `<span class="pill">new</span>`
             return `<tr data-i="${ALL.indexOf(v)}">
               <td>${fmt(v.time)}<br><span class="muted">${timeAgo(v.time)}</span></td>
               <td>${flag(v.countryCode)} ${esc(loc)}${v.region ? `<br><span class="muted">${esc(v.region)}</span>` : ''}</td>
@@ -397,6 +411,13 @@
       })
       $('refresh').onclick = () => load(sessionStorage.getItem('dpw') || '')
       $('search').addEventListener('input', applyFilters)
+      let GROUPED = true
+      $('groupBtn').onclick = () => {
+        GROUPED = !GROUPED
+        $('groupBtn').classList.toggle('on', GROUPED)
+        $('groupBtn').textContent = GROUPED ? 'Grouped by visitor' : 'All visits'
+        applyFilters()
+      }
       $('rows').addEventListener('click', (e) => {
         const tr = e.target.closest('tr[data-i]')
         if (!tr) return
