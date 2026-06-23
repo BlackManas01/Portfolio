@@ -186,7 +186,9 @@
       }
 
       $('enter').onclick = () => load($('pw').value)
-      $('pw').onkeydown = (e) => e.key === 'Enter' && load($('pw').value)
+      $('pw').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') load($('pw').value)
+      })
       $('refresh').onclick = () => load(sessionStorage.getItem('dpw') || '')
 
       // Show / hide password
